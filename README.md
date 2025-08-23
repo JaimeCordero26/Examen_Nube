@@ -1,309 +1,405 @@
-# Café Aurora S.R.L. - Sistema de Gestión en la Nube
+¡Listo! Te dejo un **README** pensado para que cualquiera —aunque nunca haya usado Kubernetes— pueda poner a funcionar **todo el proyecto Cafe Boreal**: base de datos, APIs, Nginx con TLS, y observabilidad (Prometheus + cAdvisor + Grafana), además de cómo probar y depurar.
 
-## Información del Proyecto
+---
 
-**Universidad:** Universidad Técnica Nacional  
-**Materia:** ITI-522 - Computación en la Nube  
-**Profesor:** Andrés Joseph Jiménez  
-**Estudiantes:** 
-- Daniel Saborío
-- Alejandro Cordero
+# ☕ Cafe Boreal — Guía de Uso (README)
 
-**Repositorio:** https://github.com/JaimeCordero26/Examen_Nube.git
+Microservicios en **Kubernetes (minikube)** con **PostgreSQL**, **Nginx con TLS**, y **observabilidad** (Prometheus, cAdvisor, Grafana).
+Incluye comandos para levantar, probar, recolectar evidencias y resolver problemas comunes.
 
-## Descripción
+---
 
-Sistema híbrido de gestión empresarial para Café Aurora S.R.L. que combina arquitectura de microservicios moderna con sistemas legados, implementando mejores prácticas de DevOps, seguridad y observabilidad.
+## 0) Requisitos previos
 
-## Arquitectura del Sistema
+* Sistema Linux con:
 
-### Componentes Principales
+  * **Docker** (activo)
+  * **kubectl**
+  * **minikube**
+  * **jq** (para procesar JSON en terminal)
+  * **openssl** (para crear certificado TLS)
+* Acceso al repositorio con esta estructura:
 
-- **Microservicios (Kubernetes):**
-  - Catalog API: Gestión de productos (CRUD)
-  - Orders API: Procesamiento de pedidos
-  - Customers API: Gestión de clientes
-  - Base de datos: PostgreSQL/MongoDB
+  ```
+  cafe-boreal/
+  ├── deploy/
+  │   ├── kubernetes/         # YAMLs de K8s
+  │   ├── nginx/              # TLS y conf (si usas Docker local de Nginx)
+  │   └── scripts/            # Scripts auxiliares (opcional)
+  ├── source/
+  │   ├── api-catalog/
+  │   ├── api-customers/
+  │   └── api-orders/
+  └── evidence/               # Salida de evidencias (se creará)
+  ```
 
-- **Sistema Legado:**
-  - Apache + PHP + MariaDB/MySQL (XAMPP/LAMPP)
-  - Endpoint de inventario legacy
+> Si no tienes `evidence/`, el README la crea cuando haga falta.
 
-- **Infraestructura:**
-  - Nginx como reverse proxy con HTTPS
-  - Kubernetes local (minikube/k3s)
-  - Observabilidad con Prometheus, Grafana y Loki
+---
 
-## Requisitos del Sistema
+## 1) Arrancar minikube y preparar Docker
 
-### VM Base
-- **SO:** Debian 13
-- **Hipervisor:** VirtualBox/VMware/Hyper-V
-- **RAM:** Mínimo 8GB recomendado
-- **Almacenamiento:** 50GB mínimo
-
-### Software Requerido
-- Docker & Docker Compose
-- Kubernetes (minikube o k3s)
-- Nginx
-- XAMPP/LAMPP
-- Prometheus, Grafana, Loki
-
-## Instalación y Configuración
-
-### 1. Obtener la VM
-
-La máquina virtual preconfigurada está disponible en:
-```
-https://drive.google.com/drive/folders/1iJrQNB8cMogf6hqjPh9_dsdiZf7EDshu
-```
-
-### 2. Importar VM
 ```bash
-# VirtualBox
-VBoxManage import cafe-aurora-vm.ova
-
-# VMware
-# Usar la opción "Open a Virtual Machine" en VMware Workstation
+minikube start --cpus=4 --memory=6g
+eval $(minikube docker-env)   # Muy importante para construir imágenes dentro del Docker que usa el cluster
 ```
 
-### 3. Configuración Inicial
+---
+
+## 2) Certificado TLS (autofirmado)
+
 ```bash
-# Clonar repositorio
-git clone https://github.com/JaimeCordero26/Examen_Nube.git
-cd Examen_Nube
+mkdir -p deploy/nginx/tls
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout deploy/nginx/tls/tls.key \
+  -out deploy/nginx/tls/tls.crt \
+  -subj "/CN=localhost"
 
-# Ejecutar script de inicialización
-chmod +x scripts/setup.sh
-./scripts/setup.sh
+# Crear secreto TLS en K8s:
+kubectl create secret tls nginx-tls \
+  --cert=deploy/nginx/tls/tls.crt \
+  --key=deploy/nginx/tls/tls.key \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-## Estructura del Proyecto
+---
 
-```
-├── CHANGELOG.md
-├── deploy
-│   ├── kubernetes
-│   ├── nginx
-│   ├── scripts
-│   └── tmp-legacy
-├── docs
-│   ├── architecture.md
-│   ├── data_policy.md
-│   ├── runbook.md
-│   ├── session_log.md
-│   ├── sla.md
-│   └── threat_model.md
-├── evidence
-│   ├── backup.sql
-│   ├── catalog_products.json
-│   ├── cpu_by_pod.csv
-│   ├── create_customer.json
-│   ├── create_order.json
-│   ├── http_p95_by_job.csv
-│   ├── orders.json
-│   ├── prom_targets.json
-│   └── up_by_job.csv
-├── README.md
-└── source
-	├── api-catalog
-	├── api-customers
-	├── api-orders
-	├── frontend-admin
-	└── legacy-inventory
+## 3) Base de datos: PostgreSQL + Secret
 
-```
+Aplica tu manifiesto (ej. `deploy/kubernetes/postgres.yaml`), o usa uno equivalente con:
 
-## Endpoints Principales
+* Deployment `postgres-deployment`
+* Service `postgres-service`
+* Secret `postgres-secret` con `POSTGRES_PASSWORD`
 
-### Microservicios (HTTPS)
-- `https://localhost/api/catalog` - API de catálogo de productos
-- `https://localhost/api/orders` - API de pedidos
-- `https://localhost/api/customers` - API de clientes
-
-### Sistema Legado
-- `https://localhost/legacy/inventory` - Inventario legacy (solo lectura)
-
-### Monitoreo
-- `https://localhost/grafana` - Dashboard de Grafana
-- `https://localhost/prometheus` - Métricas de Prometheus
-
-## Funcionalidades Implementadas
-
-### ✅ Infraestructura
-- [x] Cluster Kubernetes operativo
-- [x] Microservicios con health checks
-- [x] ConfigMaps y Secrets
-- [x] Ingress Controller
-- [x] Límites de recursos
-
-### ✅ Seguridad
-- [x] HTTPS con certificados autofirmados
-- [x] Cifrado de datos sensibles
-- [x] Política de clasificación de datos
-- [x] Threat modeling (STRIDE)
-- [x] Hardening básico
-
-### ✅ Observabilidad
-- [x] Prometheus + cAdvisor
-- [x] Grafana con dashboards
-- [x] Loki para logs centralizados
-- [x] SLAs y SLOs definidos
-
-### ✅ Operaciones
-- [x] Backup y restore automatizado
-- [x] Pruebas de carga
-- [x] CI/CD básico
-- [x] Runbook operativo
-
-## Comandos Rápidos
-
-### Iniciar Servicios
 ```bash
-# Iniciar cluster Kubernetes
-minikube start
-
-# Desplegar microservicios
-kubectl apply -f deploy/kubernetes/
-
-# Iniciar servicios legacy
-sudo service apache2 start
-sudo service mysql start
-
-# Iniciar Nginx
-sudo service nginx start
+kubectl apply -f deploy/kubernetes/postgres.yaml
+kubectl get pods
 ```
 
-### Verificar Estado
+Cuando `postgres-deployment` esté **READY 1/1**, crea tablas/seed si tu manifiesto no lo hace automáticamente.
+(En tu caso ya lo has hecho; si necesitas seed manual, conéctate con `psql` y ejecuta SQL).
+
+---
+
+## 4) Construir las imágenes de las APIs
+
+> Asegúrate que estás bajo `eval $(minikube docker-env)`
+
 ```bash
-# Estado de pods
-kubectl get pods -A
-
-# Estado de servicios
-kubectl get services
-
-# Logs de aplicación
-kubectl logs -f deployment/catalog-api
+docker build -t catalog-api:v1   source/api-catalog
+docker build -t customers-api:v1 source/api-customers
+docker build -t orders-api:v1    source/api-orders
 ```
 
-### Pruebas de Carga
+---
+
+## 5) Desplegar los microservicios
+
+Aplica los YAML de cada servicio (Deployment + Service). Si no existen ya listos, usa los tuyos existentes:
+
 ```bash
-# Perfil 1: Carga normal
-ab -n 1000 -c 10 https://localhost/api/catalog/
-
-# Perfil 2: Carga intensiva
-hey -n 5000 -c 50 -t 30 https://localhost/api/orders/
+kubectl apply -f deploy/kubernetes/catalog.yaml
+kubectl apply -f deploy/kubernetes/customers.yaml
+kubectl apply -f deploy/kubernetes/orders.yaml
 ```
 
-## SLAs y Métricas
+Verifica:
 
-### SLOs Definidos
-- **Disponibilidad:** 99.5% uptime
-- **Latencia P95:** < 500ms
-- **MTTR:** < 30 minutos
-
-### Métricas Monitoreadas
-- CPU y memoria por pod
-- Latencia de respuesta HTTP
-- Tasa de errores 4xx/5xx
-- Disponibilidad de base de datos
-
-## Backup y Restauración
-
-### Backup Automático
 ```bash
-# Ejecutar backup completo
-./scripts/backup.sh
-
-# Backup específico de BD
-./scripts/backup-db.sh postgresql
+kubectl get pods -o wide
+kubectl get svc
 ```
 
-### Restauración
+Deberías ver `catalog-api-service`, `customers-api-service`, `orders-api-service` como **ClusterIP:80 → targetPort:3000**.
+
+---
+
+## 6) Nginx como entrada HTTPS (NodePort)
+
+Aplica Deployment + Service con NodePort (ej. `80:30080`, `443:30443`) y ConfigMap con `nginx.conf` que enruta:
+
+* `/api/catalog` → `catalog-api-service:80`
+* `/api/customers` → `customers-api-service:80`
+* `/api/orders` → `orders-api-service:80`
+* `ssl_certificate` y `ssl_certificate_key` apuntando a `/etc/nginx/tls/…` (Secret `nginx-tls` montado)
+
+Ejemplo de despliegue:
+
 ```bash
-# Restaurar desde backup
-./scripts/restore.sh backup-YYYYMMDD.tar.gz
-
-# Verificar integridad
-./scripts/verify-restore.sh
+kubectl apply -f deploy/kubernetes/nginx-config.yaml
+kubectl apply -f deploy/kubernetes/nginx-deployment.yaml
+kubectl apply -f deploy/kubernetes/nginx-service.yaml
+kubectl rollout restart deployment nginx-deployment
 ```
 
-## Desarrollo Local
+Obtén la IP:
 
-### Prerrequisitos
-- Docker y Docker Compose
-- kubectl configurado
-- Node.js 18+ (para frontend)
-
-### Configurar Entorno
 ```bash
-# Variables de entorno
-cp .env.example .env
-vim .env
-
-# Instalar dependencias
-npm install
-
-# Ejecutar en modo desarrollo
-docker-compose up -d
+MINI=$(minikube ip)
+kubectl get svc nginx-service
+# Debes ver 80:30080/TCP y 443:30443/TCP
 ```
 
-## Documentación Técnica
+Pruebas de salud:
 
-La documentación técnica completa se encuentra en la carpeta `docs/`:
-
-- **Arquitectura:** Diagramas y decisiones de diseño
-- **RunBook:** Procedimientos operativos
-- **Seguridad:** Políticas y threat model
-- **SLAs:** Definición de niveles de servicio
-- **BCP/DRP:** Plan de continuidad de negocio
-
-## Evidencias
-
-Todas las evidencias del cumplimiento de requisitos están disponibles en `evidence/`:
-- Capturas de pantalla de funcionamiento
-- Logs de pruebas de carga
-- Consultas SQL de cifrado
-- Métricas de Grafana
-- Resultados de backup/restore
-
-## Troubleshooting
-
-### Problemas Comunes
-
-**Error: CrashLoopBackOff**
 ```bash
-kubectl describe pod <pod-name>
-kubectl logs <pod-name> --previous
+curl -k https://$MINI:30443/api/catalog/healthz
+curl -k https://$MINI:30443/api/customers/healthz
+curl -k https://$MINI:30443/api/orders/healthz
 ```
 
-**Certificados HTTPS no válidos**
+---
+
+## 7) Cifrado en Customers (pgcrypto)
+
+* Secret `encryption-secret` con `ENCRYPTION_KEY` (ya lo tienes).
+* Deployment de `api-customers` con:
+
+  ```yaml
+  env:
+  - name: ENCRYPTION_KEY
+    valueFrom:
+      secretKeyRef:
+        name: encryption-secret
+        key: ENCRYPTION_KEY
+  ```
+* En DB, habilitar extensión:
+
+  ```sql
+  CREATE EXTENSION IF NOT EXISTS pgcrypto;
+  ```
+* Probar inserción por API:
+
+  ```bash
+  curl -ks -X POST https://$MINI:30443/api/customers \
+    -H "Content-Type: application/json" \
+    -d '{"full_name":"Alice Example","email":"alice@example.com","identity_number":"ID888"}'
+  ```
+* Ver en DB que `identity_number` está cifrado (`\x...` hex):
+
+  ```bash
+  kubectl exec -it deploy/postgres-deployment -- \
+    psql -U admin -d cafeboreal -c "SELECT id, full_name, email, identity_number FROM customers LIMIT 5;"
+  ```
+
+---
+
+## 8) Observabilidad
+
+### 8.1 cAdvisor + Prometheus + Exporter de Nginx
+
+Usa el script (si ya lo tienes) **setup\_observabilidad.sh** que:
+
+* Crea/actualiza `nginx.conf` con `stub_status` (solo para métricas).
+* Despliega `nginx-prometheus-exporter`.
+* Crea/actualiza `prometheus-config` para scrapear:
+
+  * `cadvisor`
+  * `catalog` `/metrics`
+  * `customers` `/metrics`
+  * `orders` `/metrics`
+  * `nginx-exporter`
+* Despliega Prometheus y su Service.
+
+> Si no tienes el script, aplica los YAML equivalentes según te compartí en la sesión.
+
+Verifica targets:
+
 ```bash
-# Regenerar certificados
-./scripts/generate-certs.sh
-sudo service nginx reload
+kubectl port-forward svc/prometheus-service 9090:9090
+curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job: .labels.job, health: .health}'
 ```
 
-**Base de datos no conecta**
+### 8.2 Instrumentar `/metrics` en Node.js
+
+En **cada** `server.js` (catalog/customers/orders):
+
+```js
+// npm i prom-client
+const client = require('prom-client');
+client.collectDefaultMetrics();
+
+const hist = new client.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'request latency',
+  labelNames: ['method','route','code'],
+  buckets: [0.01,0.05,0.1,0.25,0.5,1,2,5]
+});
+
+app.use((req, res, next) => {
+  const end = hist.startTimer({ method: req.method, route: req.path });
+  res.on('finish', () => end({ code: res.statusCode }));
+  next();
+});
+
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', client.register.contentType);
+  res.end(await client.register.metrics());
+});
+```
+
+Reconstruir y reiniciar:
+
 ```bash
-# Verificar secretos
-kubectl get secrets
-kubectl describe secret db-credentials
+eval $(minikube docker-env)
+docker build -t catalog-api:v1   ./source/api-catalog   && kubectl rollout restart deploy/catalog-api-deployment
+docker build -t customers-api:v1 ./source/api-customers && kubectl rollout restart deploy/customers-api-deployment
+docker build -t orders-api:v1    ./source/api-orders    && kubectl rollout restart deploy/orders-api-deployment
 ```
 
-## Contribución
+### 8.3 Grafana
 
-### Flujo de Trabajo
-1. Fork del repositorio
-2. Crear rama feature: `git checkout -b feature/nueva-funcionalidad`
-3. Commit cambios: `git commit -am 'Agregar nueva funcionalidad'`
-4. Push a la rama: `git push origin feature/nueva-funcionalidad`
-5. Crear Pull Request
+Despliega con tu script **setup\_grafana.sh** o YAML equivalente que:
 
-### Tags de Versiones
-- `v1.0.0-infrastructure` - Infraestructura básica
-- `v1.1.0-microservices` - Microservicios implementados
-- `v1.2.0-security` - Seguridad y cifrado
-- `v1.3.0-observability` - Monitoreo completo
-- `v2.0.0-production` - Versión final
+* Crea datasource apuntando a `http://prometheus-service.default.svc.cluster.local:9090`
+* Carga un dashboard con:
 
+  * CPU por pod (cAdvisor)
+  * p95 de latencia HTTP (si ya expones histogramas)
+
+Acceso:
+
+```bash
+kubectl port-forward svc/grafana-service 3000:3000
+# http://localhost:3000
+# Usuario: admin   Contraseña: admin123 (si no la cambiaste)
+```
+
+Si el dashboard sale vacío:
+
+* Verifica que `up` tenga `cadvisor`, `catalog`, `customers`, `orders`.
+* Genera tráfico:
+
+  ```bash
+  for i in $(seq 1 200); do curl -sk "https://$MINI:30443/api/catalog/products" >/dev/null; done
+  ```
+
+---
+
+## 9) Pruebas funcionales rápidas
+
+```bash
+MINI=$(minikube ip)
+
+# Catálogo
+curl -ks https://$MINI:30443/api/catalog/products
+
+# Customers (crear)
+curl -ks -X POST https://$MINI:30443/api/customers \
+  -H "Content-Type: application/json" \
+  -d '{"full_name":"Juan Perez","email":"juan@example.com","identity_number":"ID123"}'
+
+# Orders (crear)
+curl -ks -X POST https://$MINI:30443/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"customer_id":1,"items":[{"product_id":1,"quantity":2},{"product_id":2,"quantity":1}]}'
+
+# Orders (listar)
+curl -ks https://$MINI:30443/api/orders
+```
+
+---
+
+## 10) Evidencias (se guardan en `evidence/`)
+
+```bash
+mkdir -p evidence
+
+kubectl get pods -o wide > evidence/pods.txt
+kubectl get svc -o wide  > evidence/services.txt
+
+# Healthz
+curl -ki https://$MINI:30443/api/catalog/healthz   > evidence/catalog_healthz.txt
+curl -ki https://$MINI:30443/api/customers/healthz > evidence/customers_healthz.txt
+curl -ki https://$MINI:30443/api/orders/healthz    > evidence/orders_healthz.txt
+
+# Prometheus targets
+kubectl port-forward svc/prometheus-service 9090:9090 &
+sleep 2
+curl -s http://localhost:9090/api/v1/targets | jq . > evidence/prom_targets.json
+```
+
+---
+
+## 11) Backup y Restore (PostgreSQL)
+
+**Backup:**
+
+```bash
+kubectl exec -it deploy/postgres-deployment -- \
+  pg_dump -U admin -d cafeboreal > evidence/backup.sql
+```
+
+**Restore (simulación de desastre):**
+
+```bash
+kubectl exec -it deploy/postgres-deployment -- \
+  psql -U admin -d cafeboreal -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+
+kubectl exec -i deploy/postgres-deployment -- \
+  psql -U admin -d cafeboreal < evidence/backup.sql
+```
+
+---
+
+## 12) Solución de problemas (FAQ)
+
+* **`ContainerCreating` que no termina**
+
+  * Si montas volúmenes desde host (`hostPath`) en minikube, suele fallar por rutas/permiso. Evítalo o usa ConfigMap/imagen Docker.
+* **`ImagePullBackOff`**
+
+  * Asegúrate de **construir** imágenes con `eval $(minikube docker-env)` activo.
+* **`404` en `/api/...` vía Nginx**
+
+  * Revisa `nginx.conf` y que el Service de destino exista y apunte a `targetPort: 3000`.
+* **`301 Moved Permanently` en POST**
+
+  * No sigas redirecciones sin `-L`. Usa `curl -kL https://…` si fuese necesario.
+* **No hay métricas en Grafana**
+
+  * Verifica `up` en Prometheus, que tus APIs sirvan `/metrics`, que Prometheus tenga los jobs de `catalog/customers/orders`, y genera tráfico reciente.
+* **TLS**
+
+  * Certificado es self-signed: usa `curl -k` (ignora verificación) para pruebas.
+
+---
+
+## 13) Limpieza
+
+```bash
+kubectl delete -f deploy/kubernetes/nginx-service.yaml
+kubectl delete -f deploy/kubernetes/nginx-deployment.yaml
+kubectl delete -f deploy/kubernetes/nginx-config.yaml
+
+kubectl delete -f deploy/kubernetes/orders.yaml
+kubectl delete -f deploy/kubernetes/customers.yaml
+kubectl delete -f deploy/kubernetes/catalog.yaml
+
+kubectl delete -f deploy/kubernetes/postgres.yaml
+
+# Observabilidad (si aplicaste con scripts/YAML)
+kubectl delete deploy/prometheus svc/prometheus-service cm/prometheus-config
+kubectl delete deploy/cadvisor svc/cadvisor
+kubectl delete deploy/nginx-exporter svc/nginx-exporter-service
+kubectl delete deploy/grafana svc/grafana-service cm/grafana-datasource cm/grafana-provisioning cm/grafana-dashboard-cafe
+
+kubectl delete secret nginx-tls encryption-secret postgres-secret
+```
+
+---
+
+## 14) Resumen
+
+1. `minikube start` + `eval $(minikube docker-env)`
+2. TLS + Secret
+3. Postgres + tablas
+4. Build de imágenes (3 APIs)
+5. Deploy de APIs + Nginx (HTTPS NodePort 30443)
+6. Probar `/healthz` y endpoints
+7. Observabilidad (cAdvisor + Prometheus + Grafana)
+8. Instrumentar `/metrics` en Node y generar tráfico
+9. Evidencias y backup
+
+Con esto, **cualquier persona** puede levantar, probar y observar el sistema sin conocimiento previo. Si quieres, lo empaqueto como PDF “Manual de implementación y operación” para entregar junto con las evidencias.
