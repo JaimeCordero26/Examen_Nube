@@ -81,30 +81,37 @@ chmod +x scripts/setup.sh
 ## Estructura del Proyecto
 
 ```
-Examen_Nube/
-├── README.md
 ├── CHANGELOG.md
-├── source/                    # https://drive.google.com/drive/folders/1iJrQNB8cMogf6hqjPh9_dsdiZf7EDshuCódigo fuente
-│   ├── microservices/
-│   │   ├── catalog-api/
-│   │   ├── orders-api/
-│   │   └── customers-api/
-│   ├── legacy/
-│   │   └── inventory/
-│   └── frontend/
-├── deploy/                    # Configuraciones de despliegue
-│   ├── kubernetes/
-│   ├── nginx/
-│   └── scripts/
-├── docs/                      # Documentación
-│   ├── architecture/
-│   ├── runbook/
-│   ├── security/
-│   └── technical/
-└── evidence/                  # Evidencias y capturas
-    ├── screenshots/
-    ├── logs/
-    └── tests/
+├── deploy
+│   ├── kubernetes
+│   ├── nginx
+│   ├── scripts
+│   └── tmp-legacy
+├── docs
+│   ├── architecture.md
+│   ├── data_policy.md
+│   ├── runbook.md
+│   ├── session_log.md
+│   ├── sla.md
+│   └── threat_model.md
+├── evidence
+│   ├── backup.sql
+│   ├── catalog_products.json
+│   ├── cpu_by_pod.csv
+│   ├── create_customer.json
+│   ├── create_order.json
+│   ├── http_p95_by_job.csv
+│   ├── orders.json
+│   ├── prom_targets.json
+│   └── up_by_job.csv
+├── README.md
+└── source
+	├── api-catalog
+	├── api-customers
+	├── api-orders
+	├── frontend-admin
+	└── legacy-inventory
+
 ```
 
 ## Endpoints Principales
