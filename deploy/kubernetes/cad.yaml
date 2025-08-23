@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cadvisor
+  namespace: default
+spec:
+  selector:
+    app: cadvisor
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cadvisor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cadvisor
+  template:
+    metadata:
+      labels:
+        app: cadvisor
+    spec:
+      containers:
+      - name: cadvisor
+        image: gcr.io/cadvisor/cadvisor:latest
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: rootfs
+          mountPath: /rootfs:ro
+        - name: var-run
+          mountPath: /var/run:ro
+        - name: sys
+          mountPath: /sys:ro
+        - name: docker
+          mountPath: /var/lib/docker:ro
+        args:
+        - --docker_only
+        - --port=8080
+      volumes:
+      - name: rootfs
+        hostPath:
+          path: /
+      - name: var-run
+        hostPath:
+          path: /var/run
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: docker
+        hostPath:
+          path: /var/lib/docker

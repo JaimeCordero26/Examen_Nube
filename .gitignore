@@ -1,0 +1,19 @@
+# Entregables de VM
+*.ova
+*.vhd
+*.vmdk
+*.vhdx
+*.vdi
+
+# Archivos de sistema operativo
+.DS_Store
+Thumbs.db
+
+# Dependencias de lenguajes
+node_modules/
+__pycache__/
+vendor/
+
+# Logs y archivos temporales
+*.log
+*.tmp

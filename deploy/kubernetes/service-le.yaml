@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: legacy-service
+spec:
+  selector:
+    app: legacy
+  ports:
+  - port: 8080
+    targetPort: 80
+

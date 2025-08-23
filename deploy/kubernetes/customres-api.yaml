@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customers-api-deployment
+  labels:
+    app: customers-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: customers-api
+  template:
+    metadata:
+      labels:
+        app: customers-api
+    spec:
+      containers:
+      - name: customers-api
+        image: customers-api:v1
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 3000
+        env:
+        # Configuración de la base de datos
+        - name: DB_USER
+          value: "admin"
+        - name: DB_HOST
+          value: "postgres-service"
+        - name: DB_DATABASE
+          value: "cafeboreal"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_PASSWORD
+        # 🔑 Clave de cifrado para pgcrypto
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: encryption-secret
+              key: ENCRYPTION_KEY
+        livenessProbe:
+          httpGet:
+            path: /api/customers/healthz
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/customers/healthz
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: customers-api-service
+spec:
+  selector:
+    app: customers-api
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 3000

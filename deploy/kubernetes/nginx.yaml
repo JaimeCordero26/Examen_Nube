@@ -1,0 +1,43 @@
+# deploy/kubernetes/nginx-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: default
+data:
+  nginx.conf: |
+    events {}
+
+    http {
+      server {
+        listen 80;
+        server_name localhost;
+        return 301 https://$host$request_uri;
+      }
+
+      server {
+        listen 443 ssl;
+        server_name localhost;
+
+        ssl_certificate     /etc/nginx/tls/tls.crt;
+        ssl_certificate_key /etc/nginx/tls/tls.key;
+
+        # Catalog
+        location /api/catalog/ {
+          proxy_set_header Host localhost;
+          proxy_pass http://catalog-api-service.default.svc.cluster.local;
+        }
+
+        # Customers
+        location /api/customers/ {
+          proxy_set_header Host localhost;
+          proxy_pass http://customers-api-service.default.svc.cluster.local;
+        }
+
+        # Orders
+        location /api/orders/ {
+          proxy_set_header Host localhost;
+          proxy_pass http://orders-api-service.default.svc.cluster.local;
+        }
+      }
+    }

@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacy-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: legacy
+  template:
+    metadata:
+      labels:
+        app: legacy
+    spec:
+      containers:
+      - name: legacy
+        image: php:8.2-apache
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: legacy-code
+          mountPath: /var/www/html
+      volumes:
+      - name: legacy-code
+        configMap:
+          name: legacy-code

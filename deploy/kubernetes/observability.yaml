@@ -1,0 +1,132 @@
+# 1. Deployment para cAdvisor
+# cAdvisor recolecta métricas de uso de recursos de los contenedores
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cadvisor
+  namespace: kube-system # Se recomienda desplegarlo en el namespace de sistema
+spec:
+  selector:
+    matchLabels:
+      name: cadvisor
+  template:
+    metadata:
+      labels:
+        name: cadvisor
+    spec:
+      containers:
+      - name: cadvisor
+        image: gcr.io/cadvisor/cadvisor:v0.47.0
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: rootfs
+          mountPath: /rootfs
+          readOnly: true
+        - name: var-run
+          mountPath: /var/run
+          readOnly: true
+        - name: sys
+          mountPath: /sys
+          readOnly: true
+        - name: docker
+          mountPath: /var/lib/docker
+          readOnly: true
+      volumes:
+      - name: rootfs
+        hostPath:
+          path: /
+      - name: var-run
+        hostPath:
+          path: /var/run
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: docker
+        hostPath:
+          path: /var/lib/docker
+---
+# 2. Deployment para Prometheus
+# Prometheus es el servidor de monitoreo que scrapea las métricas
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-deployment
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v2.44.0
+        ports:
+        - containerPort: 9090
+        volumeMounts:
+        - name: prometheus-config-volume
+          mountPath: /etc/prometheus/
+        - name: prometheus-storage-volume
+          mountPath: /prometheus/
+      volumes:
+      - name: prometheus-config-volume
+        configMap:
+          name: prometheus-config
+      - name: prometheus-storage-volume
+        emptyDir: {}
+---
+# 3. ConfigMap para Prometheus
+# Este archivo le dice a Prometheus qué métricas recolectar
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      # Scrapear métricas de cAdvisor
+      - job_name: 'cadvisor'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - kube-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app]
+            action: keep
+            regex: cadvisor
+      # Scrapear métricas de los pods de la aplicación
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            target_label: __meta_kubernetes_pod_container_port
+            regex: (\d+)
+---
+# 4. Service para exponer Prometheus
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - protocol: TCP
+      port: 9090
+      targetPort: 9090
+  type: LoadBalancer # Para acceder a Prometheus desde fuera del clúster
+
